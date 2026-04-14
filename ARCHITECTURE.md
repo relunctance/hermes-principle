@@ -184,7 +184,7 @@ while api_call_count < max_iterations:
 | `~/.hermes/config.yaml` | 主配置 |
 | `~/.hermes/.env` | API Keys |
 | `~/.hermes/sessions/` | 会话历史 |
-| `~/.hermes/logs/` | 日志 |
+| `~/.hermes/logs/` | 日志目录（agent.log / errors.log / interrupt_debug.log） |
 
 ## 源码结构
 
@@ -264,6 +264,34 @@ Gateway → 用户
 | **记忆** | 可插拔 (Honcho/Mem0) | SOUL.md/USER.md |
 | **会话** | SQLite (FTS5) | 文件 |
 | **定时任务** | Cron 内置 | 依赖外部 |
+
+### 8. 日志系统
+
+**目录：** `~/.hermes/logs/`
+
+| 文件 | 级别 | 说明 |
+|------|------|------|
+| `agent.log` | INFO+ | 主日志，记录所有正常运行信息 |
+| `errors.log` | WARNING+ | 错误日志，仅记录警告和错误 |
+| `interrupt_debug.log` | DEBUG | 中断调试日志（v0.8.0+） |
+
+**日志配置来源：**
+- `~/.hermes/config.yaml` 第 270 行 `logging:` 配置段
+- `cli.py` 第 526-530 行：启动时通过 `hermes_logging.setup_logging(mode="cli")` 初始化
+- v0.8.0 引入集中式日志，取代之前的分散输出
+
+**日志命令：**
+```bash
+hermes logs        # 查看日志
+hermes logs -f     # 实时跟踪
+hermes logs --errors  # 仅看错误
+```
+
+**日志格式：**
+```
+2026-04-14 16:11:23,456 INFO  run_agent: Loaded environment variables from ...
+2026-04-14 16:11:24,633 ERROR [20260414_094758_d755a4] root: Non-retryable client error: ...
+```
 
 ## 配置示例
 

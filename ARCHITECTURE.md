@@ -265,7 +265,175 @@ Gateway → 用户
 | **会话** | SQLite (FTS5) | 文件 |
 | **定时任务** | Cron 内置 | 依赖外部 |
 
-### 8. 日志系统
+### 8. 记忆系统
+
+Hermes 记忆系统由**两层**组成，协同工作实现跨会话持久化记忆。
+
+#### 8.1 原生会话记忆（hermes_state.py）
+
+**文件：** `~/.hermes/hermes-agent/hermes_state.py`
+
+**技术：** SQLite + FTS5 全文搜索
+
+**职责：**
+- 存储当前会话的历史消息
+- 按 session_id 检索会话上下文
+- 提供 `hermes_state.py` 的 `search_sessions()` 方法进行历史搜索
+
+**特点：**
+- 会话级别，非跨会话持久化
+- 自动加载最近 N 条消息到上下文
+- 支持 FTS5 全文检索
+
+#### 8.2 hawk-bridge 跨会话记忆（外部系统）
+
+**概述：**
+
+hawk-bridge 是 Hermes 的记忆增强系统，通过 Hook 机制在每次 `agent:start` 和 `agent:end` 时自动捕获/召回记忆，存储到 LanceDB。
+
+**架构：**
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │              Hermes Gateway               │
+                    │                                          │
+                    │  agent:start ──► 召回记忆 ──► 注入上下文  │
+用户消息 ──► AIAgent ───────────────────────────────────────────► 响应
+                    │              agent:end  ──► 存储记忆    │
+                    └──────────────────┬────────────────────────┘
+                                       │
+                                       ▼
+                    ┌─────────────────────────────────────────┐
+                    │          hawk-memory-api (FastAPI)       │
+                    │                                          │
+                    │  POST /recall  ──► LanceDB 召回          │
+                    │  POST /capture ──► LLM 提取 → 存储       │
+                    └──────────────────┬────────────────────────┘
+                                       │
+                                       ▼
+                    ┌─────────────────────────────────────────┐
+                    │              LanceDB                     │
+                    │  ~/.hawk/memory.db                       │
+                    │                                          │
+                    │  表: hawk_memories                       │
+                    │  - id, text, vector, category            │
+                    │  - scope, importance, timestamp           │
+                    │  - expiresAt                             │
+                    └─────────────────────────────────────────┘
+```
+
+**四层衰减架构：**
+
+| 层级 | 用途 | 淘汰策略 |
+|------|------|---------|
+| **Working** | 正在处理的记忆 | 即时淘汰 |
+| **Short** | 短期记忆（偏好、事实） | TTL 30天 |
+| **Long** | 重要记忆 | 低频访问自动降级 |
+| **Archive** | 归档记忆 | 长时间未访问 |
+
+**混合检索管线（6大优化）：**
+
+```
+用户 Query
+    │
+    ▼
+1. Query Expansion（查询扩展）
+   "openclaw 架构" → ["openclaw 架构", "openclaw design", "openclaw 底层原理", ...]
+    │
+    ▼
+2. Multi-query Vector + BM25
+   每个扩展查询独立检索
+    │
+    ▼
+3. RRF Fusion（倒数排名融合）
+   合并多路结果
+    │
+    ▼
+4. Noise Filter（噪声过滤）
+   过滤"好的""收到"等无意义文本
+    │
+    ▼
+5. Cross-encoder Rerank（交叉编码重排）
+   精排相关性
+    │
+    ▼
+6. Confidence Threshold（置信度过滤）
+   score < 0.3 丢弃
+    │
+    ▼
+7. MMR Diversity（多样性排序）
+   λ × 相关性 - (1-λ) × 最大相似度
+    │
+    ▼
+8. Result Compression（结果压缩）
+   超过 200 字符截断到句子边界
+    │
+    ▼
+注入上下文
+```
+
+**6大检索优化详解：**
+
+| 优化 | 说明 | 默认值 |
+|------|------|--------|
+| Query Expansion | 查询扩展成 3-4 个语义相关表述 | 开启，3个扩展 |
+| MMR Diversity | λ=0.5 平衡相关性与多样性 | 开启，λ=0.5 |
+| Confidence Threshold | 低于 0.3 分的记忆丢弃 | 开启，阈值 0.3 |
+| Field-weighted BM25 | category 字段权重 2.0 | 开启 |
+| Session Context Awareness | 组合最近对话摘要到 query | 自动 |
+| Result Compression | 超过 200 字符自然断句 | 开启，200字符 |
+
+**记忆分类（6类）：**
+
+| 类别 | 说明 |
+|------|------|
+| `fact` | 客观事实（用户职业、项目名称等） |
+| `preference` | 用户偏好（喜欢简洁回复、使用中文等） |
+| `decision` | 决策记录（选择了方案A、决定做X等） |
+| `entity` | 实体（人名、产品名、工具名等） |
+| `context` | 上下文（当前项目、会话背景等） |
+| `other` | 其他 |
+
+**接入方式：**
+
+```bash
+# Hermes 通过 ~/.hermes/hooks/hawk-bridge/ 接入
+~/.hermes/hooks/hawk-bridge/
+├── HOOK.yaml      # 声明 agent:start / agent:end
+└── handler.py     # 处理函数
+```
+
+**HOOK.yaml：**
+```yaml
+name: hawk-bridge-hermes
+description: "Hermes Hook Bridge for hawk-bridge memory system"
+events:
+  - agent:start   # 召回记忆 → 注入上下文
+  - agent:end     # 捕获对话 → 存储记忆
+```
+
+**hawk-memory-api 启动：**
+```bash
+python3 ~/repos/hawk-memory-api/server.py
+# 或后台运行
+nohup python3 ~/repos/hawk-memory-api/server.py > ~/.hawk/api.log 2>&1 &
+```
+
+**配置环境变量：**
+```bash
+export HAWK__PYTHON__HTTP_MODE=true
+export HAWK__PYTHON__HTTP_BASE=http://127.0.0.1:18360
+```
+
+**与 OpenClaw 共用：**
+
+hawk-bridge 同时支持 OpenClaw 和 Hermes，共用同一份 LanceDB 数据：
+- OpenClaw Hook → `~/.openclaw/hawk/`
+- Hermes Hook → `~/.hermes/hooks/hawk-bridge/`
+
+---
+
+### 9. 日志系统
 
 **目录：** `~/.hermes/logs/`
 

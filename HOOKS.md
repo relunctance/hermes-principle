@@ -189,16 +189,19 @@ async def handle(event_type: str, context: dict) -> None:
     └── handler.py     # 处理函数
 ```
 
-### HOOK.yaml
+### HOOK.yaml — 事件过滤机制
+
+**关键机制：** `events` 列表是**白名单**，只声明需要的，其他事件自动忽略。
 
 ```yaml
 name: my-hook
 description: "我的自定义钩子"
 events:
-  - agent:start
-  - agent:end
-  - command:new
+  - agent:start   # 只监听这一个
+  - agent:end     # 只监听这一个
 ```
+
+如果只关心 `agent:start` 和 `agent:end`，就只写这两个。`session:start`、`command:*` 等其他事件不会被触发。
 
 ### handler.py
 
@@ -215,6 +218,123 @@ async def handle(event_type: str, context: dict) -> None:
 ```
 
 **注意：** 也支持同步函数，`HookRegistry.emit()` 会自动检测 `asyncio.iscoroutine()`
+
+---
+
+### hawk-bridge 实战案例
+
+**需求：**
+- `agent:start` → 从 LanceDB 召回记忆，注入到 Agent 上下文
+- `agent:end` → 将本次对话内容存储到 LanceDB
+
+**目录结构：**
+
+```
+~/.hermes/hooks/hawk-bridge/
+├── HOOK.yaml
+└── handler.py
+```
+
+**HOOK.yaml：**
+
+```yaml
+name: hawk-bridge
+description: "OpenClaw Hook Bridge + context-hawk Memory Engine"
+events:
+  - agent:start   # Agent 开始处理 → 从 LanceDB 召回记忆
+  - agent:end     # Agent 完成 → 存储记忆到 LanceDB
+```
+
+**handler.py：**
+
+```python
+import asyncio
+import logging
+from pathlib import Path
+
+logger = logging.getLogger("hooks.hawk-bridge")
+
+LANCEDB_PATH = Path.home() / ".hermes" / "hawk-memory" / "memory.db"
+
+async def handle(event_type: str, context: dict) -> None:
+    if event_type == "agent:start":
+        session_id = context.get("session_id")
+        if not session_id:
+            return
+
+        try:
+            from hawk_memory import RecallEngine
+            recall = RecallEngine(LANCEDB_PATH)
+            memories = recall.recall(session_id)
+
+            if memories:
+                logger.info(f"hawk-bridge: 召回 {len(memories)} 条记忆 for {session_id}")
+                # 记忆内容在 memories 中，可通过某种机制注入到 Agent 上下文
+                # 例如写入临时文件、由 AIAgent 在 agent:start 时读取
+                _inject_memories(session_id, memories)
+            else:
+                logger.debug(f"hawk-bridge: 无召回记忆 for {session_id}")
+
+        except Exception as e:
+            logger.warning(f"hawk-bridge recall failed: {e}")
+
+    elif event_type == "agent:end":
+        session_id = context.get("session_id")
+        response = context.get("response", "")
+        message = context.get("message", "")
+
+        if not session_id or not response:
+            return
+
+        try:
+            from hawk_memory import CaptureEngine
+            capture = CaptureEngine(LANCEDB_PATH)
+            capture.capture(
+                session_id=session_id,
+                user_message=message,
+                agent_response=response,
+            )
+            logger.info(f"hawk-bridge: 存储记忆 for {session_id}")
+
+        except Exception as e:
+            logger.warning(f"hawk-bridge capture failed: {e}")
+
+def _inject_memories(session_id: str, memories: list) -> None:
+    """将召回的记忆注入到 Agent 上下文"""
+    # 实现方式取决于如何与 AIAgent 交互
+    # 常见方案：
+    # 1. 写入 ~/.hermes/hooks/hawk-bridge/.pending/<session_id>.json
+    # 2. AIAgent 在 agent:start 时读取并注入
+    # 3. 或通过 Gateway 的 _pending_messages 机制
+    pass
+```
+
+**流程：**
+
+```
+用户消息
+    │
+    ▼
+agent:start 触发
+    │  hawk-bridge handler 调用
+    ▼
+RecallEngine.recall(session_id)
+    │
+    ▼
+记忆注入 Agent 上下文
+    │
+    ▼
+Agent 处理消息（看到召回的记忆）
+    │
+    ▼
+agent:end 触发
+    │  hawk-bridge handler 调用
+    ▼
+CaptureEngine.capture(session_id, message, response)
+    │
+    ▼
+记忆持久化到 LanceDB
+```
 
 ---
 

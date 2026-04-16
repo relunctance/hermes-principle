@@ -30,14 +30,17 @@ Hermes 在 System Prompt 里注入了**强制性指令**，要求模型在行动
 
 ### 1. Skills Mandatory Rule（Skills 强制扫描）
 
-**源码：** `prompt_builder.py` 第 768-790 行
+**源码位置：** `prompt_builder.py` 第 768-790 行
 
+**原文（System Prompt 实际内容，不翻译）：**
 ```
 ## Skills (mandatory)
 Before replying, scan the skills below. If a skill matches or is even partially
 relevant to your task, you MUST load it with skill_view(name) and follow its
 instructions.
 ```
+
+**中文解释：** 这段指令的意思是"每次回复前，必须扫描 Skills 列表。如果发现有任何 Skill 与当前任务相关，必须用 `skill_view` 加载它，并严格按照 Skill 里的步骤执行。"
 
 **效果：** 每次回复前，模型必须检查是否有适用的 Skills。如果任务涉及 debug → 必须加载 `systematic-debugging`；如果需要规划 → 必须加载 `plan`；如果复杂多步 → 必须加载 `subagent-driven-development`。
 
@@ -47,8 +50,9 @@ instructions.
 
 ### 2. Prerequisite Checks（前置检查指令块）
 
-**源码：** `prompt_builder.py` 第 242-247 行
+**源码位置：** `prompt_builder.py` 第 242-247 行
 
+**原文（System Prompt 实际内容，不翻译）：**
 ```
 <prerequisite_checks>
 - Before taking an action, check whether prerequisite discovery, lookup, or
@@ -58,14 +62,20 @@ instructions.
 </prerequisite_checks>
 ```
 
+**中文解释：**
+- "在执行动作前，检查是否需要先做探索、查找或收集上下文的步骤"
+- "不要因为最终动作看起来很明显就跳过前置步骤"
+- "如果当前任务依赖前一个步骤的输出，必须先完成那个步骤"
+
 **效果：** 模型被强制要求在行动前检查"我有没有遗漏前置步骤"。这直接防止了"看到任务就动手"的冲动行为。
 
 ---
 
 ### 3. Verification（验证指令块）
 
-**源码：** `prompt_builder.py` 第 249-256 行
+**源码位置：** `prompt_builder.py` 第 249-256 行
 
+**原文（System Prompt 实际内容，不翻译）：**
 ```
 <verification>
 Before finalizing your response:
@@ -77,20 +87,32 @@ Before finalizing your response:
 </verification>
 ```
 
+**中文解释：**
+- **Correctness（正确性）**：输出是否满足所有明确的要求？
+- **Grounding（事实依据）**：事实性主张是否有工具输出或给定上下文支撑？
+- **Formatting（格式）**：输出是否符合要求的格式或schema？
+- **Safety（安全性）**：如果下一步有副作用（文件写入、命令执行、API调用），执行前要确认范围。
+
 **效果：** 模型在交付结果前必须自检四个维度，减少了"做完了但没做对"的返工。
 
 ---
 
 ### 4. Missing Context（上下文缺失处理）
 
-**源码：** `prompt_builder.py` 第 258-264 行
+**源码位置：** `prompt_builder.py` 第 258-264 行
 
+**原文（System Prompt 实际内容，不翻译）：**
 ```
 <missing_context>
 - If required context is missing, do NOT guess or hallucinate an answer.
 - Use the appropriate lookup tool when missing information is retrievable.
 - Ask a clarifying question only when the information cannot be retrieved by tools.
 ```
+
+**中文解释：**
+- "如果缺少必要的上下文，**不要**猜测或编造答案"
+- "如果缺失的信息可以通过工具获取，就用相应的查找工具"
+- "只有在信息无法通过工具获取时，才提问澄清"
 
 **效果：** 防止模型在信息不足时瞎猜，强制它先查文件、搜代码。
 
@@ -102,11 +124,11 @@ OpenClaw 有 `task-decomposer` skill，功能类似：
 
 | 能力 | Hermes | OpenClaw task-decomposer |
 |------|--------|-------------------------|
-| 识别子组件 | ✅ (via mandatory skill scan) | ✅ |
-| 确定依赖关系 | ✅ (via prerequisite_checks) | ✅ |
+| 识别子组件 | ✅（通过强制 skill 扫描） | ✅ |
+| 确定依赖关系 | ✅（通过前置检查指令） | ✅ |
 | 估算工作量 | ❌ 无 | ❌ |
-| 创建执行计划 | ✅ (via plan skill) | ✅ |
-| **执行** | ✅ **并行子 Agent** | ⚠️ 串行 |
+| 创建执行计划 | ✅（通过 plan skill） | ✅ |
+| **执行** | ✅ **并行子 Agent** | ⚠️ 串行执行 |
 
 **关键差异：** Hermes 有 `delegate_task` 的并行执行能力，OpenClaw 的 task-decomposer 只负责拆解，不负责并行执行。
 
@@ -118,7 +140,7 @@ OpenClaw 有 `task-decomposer` skill，功能类似：
 1. 用户输入复杂任务
          │
          ▼
-2. Skills Mandatory Scan
+2. Skills Mandatory Scan（强制扫描）
    → 检测到复杂任务，加载 plan skill
    → 检测到需要调试，加载 systematic-debugging
    → 检测到多子任务，加载 subagent-driven-development
@@ -129,7 +151,7 @@ OpenClaw 有 `task-decomposer` skill，功能类似：
    → 不执行，只规划
          │
          ▼
-4. Prerequisite Checks
+4. Prerequisite Checks（强制前置检查）
    → 列出所有需要的前置步骤
    → 确定依赖关系
          │
@@ -139,7 +161,7 @@ OpenClaw 有 `task-decomposer` skill，功能类似：
    → 每个子 Agent 有独立 iteration budget（默认 50 次）
          │
          ▼
-6. Verification
+6. Verification（强制验证）
    → 每个子 Agent 完成后自检
    → 主 Agent 汇总验证
          │

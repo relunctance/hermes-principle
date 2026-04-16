@@ -60,13 +60,38 @@ Hermes 启动时通过 `prompt_builder.py` 中的 `build_skills_system_prompt()`
 
 ---
 
-## 二、策略：System Prompt 中的行为指导
+## 二、策略：System Prompt 中的三层行为指导
 
-### 2.1 SKILLS_GUIDANCE
+Hermes 在 System Prompt 中通过**三层叠加**来驱动 Agent 主动创建 skill：
 
-在 `prompt_builder.py` 中定义了两处指导原则：
+### 2.1 第一层：`MEMORY_GUIDANCE` 中嵌入的一句提示
 
-**位置 1（Memory/Guidance 段）：**
+**文件：** `prompt_builder.py` 第 144-156 行
+
+```python
+MEMORY_GUIDANCE = (
+    "You have persistent memory across sessions. Save durable facts using the memory "
+    "tool: user preferences, environment details, tool quirks, and stable conventions. "
+    "Memory is injected into every turn, so keep it compact and focused on facts that "
+    "will still matter later.\n"
+    "Prioritize what reduces future user steering — the most valuable memory is one "
+    "that prevents the user from having to correct or remind you again. "
+    "User preferences and recurring corrections matter more than procedural task details.\n"
+    "Do NOT save task progress, session outcomes, completed-work logs, or temporary TODO "
+    "state to memory; use session_search to recall those from past transcripts. "
+    "If you've discovered a new way to do something, solved a problem that could be "
+    "necessary later, save it as a skill with the skill tool."   # <-- 嵌入在这里
+)
+```
+
+**作用：** 将 skill 创建与 general memory 区分开来——程序化工作流用 skill，事实性信息用 memory。
+
+---
+
+### 2.2 第二层：独立的 `SKILLS_GUIDANCE` 常量
+
+**文件：** `prompt_builder.py` 第 164-171 行
+
 ```python
 SKILLS_GUIDANCE = (
     "After completing a complex task (5+ tool calls), fixing a tricky error, "
@@ -78,25 +103,63 @@ SKILLS_GUIDANCE = (
 )
 ```
 
-**位置 2（Skill Index 说明段）：**
+**作用：** 独立常量，在 System Prompt 的 Guidance 段被引用。明确给出"5+ tool calls"的量化阈值，并强调**维护责任**——过时 skill 是负担。
+
+---
+
+### 2.3 第三层：Skill Index 说明段中的行为指导
+
+**文件：** `prompt_builder.py` 第 757-772 行
+
+这是在 `<available_skills>` 索引块之前的一段说明，被直接注入 System Prompt：
+
 ```python
-"After difficult/iterative tasks, offer to save as a skill. "
-"If a skill you loaded was missing steps, had wrong commands, or needed "
-"pitfalls you discovered, update it before finishing.\n"
+result = (
+    "## Skills (mandatory)\n"
+    "Before replying, scan the skills below. If a skill matches or is even partially relevant "
+    "to your task, you MUST load it with skill_view(name) and follow its instructions. "
+    "Err on the side of loading — it is always better to have context you don't need "
+    "than to miss critical steps, pitfalls, or established workflows. "
+    ...
+    "If a skill has issues, fix it with skill_manage(action='patch').\n"
+    "After difficult/iterative tasks, offer to save as a skill. "          # <-- 创建建议
+    "If a skill you loaded was missing steps, had wrong commands, or needed "
+    "pitfalls you discovered, update it before finishing.\n"              # <-- 更新建议
+    ...
+)
 ```
 
-### 2.2 `skill_manage` Tool Schema 中的触发条件
+**作用：** 在 Agent 每次响应前都会读到这段话——扫描 skill → 加载相关 skill → 如有缺失则更新/创建。
 
-Tool description 明确列出创建时机：
+---
 
-```json
-"description": "...\n"
+### 2.4 第四层：`skill_manage` Tool Schema 的 description
+
+**文件：** `tools/skill_manager_tool.py` 第 653-673 行
+
+Tool 的 description 是 LLM 看到的**最终触发条件清单**：
+
+```
+"Manage skills (create, update, delete). Skills are your procedural "
+"memory — reusable approaches for recurring task types. "
+"New skills go to ~/.hermes/skills/; existing skills can be modified wherever they live.\n\n"
+"Actions: create (full SKILL.md + optional category), "
+"patch (old_string/new_string — preferred for fixes), "
+"edit (full SKILL.md rewrite — major overhauls only), "
+"delete, write_file, remove_file.\n\n"
 "Create when: complex task succeeded (5+ calls), errors overcome, "
 "user-corrected approach worked, non-trivial workflow discovered, "
-"or user asks you to remember a procedure.\n"
+"or user asks you to remember a procedure.\n"        # <-- 明确触发条件
 "Update when: instructions stale/wrong, OS-specific failures, "
 "missing steps or pitfalls found during use. "
+"If you used a skill and hit issues not covered by it, patch it immediately.\n\n"
+"After difficult/iterative tasks, offer to save as a skill. "
+"Skip for simple one-offs. Confirm with user before creating/deleting.\n\n"
+"Good skills: trigger conditions, numbered steps with exact commands, "
+"pitfalls section, verification steps. Use skill_view() to see format examples."
 ```
+
+**作用：** Tool 调用时 LLM 必读，是最终的"操作手册"。
 
 ---
 

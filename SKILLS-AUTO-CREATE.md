@@ -101,6 +101,18 @@ SKILLS_GUIDANCE = (
     "patch it immediately with skill_manage(action='patch') — don't wait to be asked. "
     "Skills that aren't maintained become liabilities."
 )
+
+# 中文说明：
+# 什么时候该创建 Skill？
+# 1. 复杂任务（5+ 工具调用）成功完成
+# 2. 克服了棘手的错误
+# 3. 发现了 nontrivial 的工作流程
+#
+# 什么时候该更新 Skill？
+# 1. 发现内容过时/错误/不完整
+# 2. 遇到 OS 特异性失败
+# 3. 发现了新的陷阱或坑
+# 4. 使用时发现缺失步骤
 ```
 
 **作用：** 独立常量，在 System Prompt 的 Guidance 段被引用。明确给出"5+ tool calls"的量化阈值，并强调**维护责任**——过时 skill 是负担。
@@ -158,6 +170,26 @@ Tool 的 description 是 LLM 看到的**最终触发条件清单**：
 "Good skills: trigger conditions, numbered steps with exact commands, "
 "pitfalls section, verification steps. Use skill_view() to see format examples."
 ```
+
+# 中文说明：
+## 创建 Skill 的时机
+1. **复杂任务成功**（5+ 工具调用）—— 需要多次操作才能完成的任务
+2. **克服了错误** —— 解决了棘手的 bug 或问题
+3. **发现了 nontrivial 工作流** —— 找到了意想不到但有效的解决方案
+4. **用户纠正生效** —— 用户纠正了你的方法且有效，说明原本流程有问题
+5. **用户要求记住流程** —— 主动要求记住的操作步骤
+
+## 更新 Skill 的时机
+1. **内容过时/错误/不完整** —— 发现 Skill 中的信息已经不对了
+2. **OS 特异性失败** —— 遇到了特定操作系统的问题
+3. **发现新坑/陷阱** —— 使用时发现了原本没写进去的陷阱
+4. **缺失步骤** —— 使用时发现步骤不完整
+
+## 什么是"好的 Skill"
+- **触发条件**：明确说明在什么情况下使用这个 Skill
+- **带命令的编号步骤**：每个步骤都有具体命令，方便复制执行
+- **陷阱说明**：提醒可能出问题的地方
+- **验证步骤**：确认任务完成的方法
 
 **作用：** Tool 调用时 LLM 必读，是最终的"操作手册"。
 

@@ -34,8 +34,8 @@ Hermes 有**两套独立的 Hook 系统**，职责不同：
 
 ### 2.2 事件列表
 
-|| 事件名称 | 触发时机 | context 参数 |
-||---------|---------|-------------|
+| 事件名称 | 触发时机 | context 参数 |
+|---------|---------|-------------|
 | `gateway:startup` | Gateway 进程启动，所有平台连接完成 | `platforms: List[str]` |
 | `session:start` | 新会话创建（首次消息或自动重置后） | `platform`, `user_id`, `session_id`, `session_key` |
 | `session:end` | 会话结束（/new、/reset、手动重置） | `platform`, `user_id`, `session_key` |

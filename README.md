@@ -21,6 +21,7 @@
 | **[SKILLS-AUTO-CREATE.md](./SKILLS-AUTO-CREATE.md)** | Skill 自动创建机制：**无后台调度器**，纯由 LLM 主动决策调用 `skill_manage` 工具。触发条件、分析器、生成器、验证器的四层流程。 |
 | **[TASK-DECOMPOSITION.md](./TASK-DECOMPOSITION.md)** | 任务拆解能力对比：Hermes 的四大强制机制（Skills Mandatory Rule、Prerequisite Checks、Plan Mode）如何强制模型按正确方式工作，而非依赖模型自身能力。 |
 | **[TOOLS-SYSTEM.md](./TOOLS-SYSTEM.md)** | 工具系统：54 个内置工具（terminal/file/web/delegate/mcp 等）、Tool Registry 注册机制、ToolCall 分发、`environments/` 执行后端（local/docker/ssh/modal）。 |
+| **[MODEL-TOOLS.md](./MODEL-TOOLS.md)** | 工具编排层：Tool Discovery（导入即注册）、Toolset 过滤、类型强制转换（coerce_tool_args）、handle_function_call 分发流程、Async 桥接（persistent event loop）、动态 Schema 修正。 |
 | **[hermes-cron-architecture.md](./hermes-cron-architecture.md)** | Cron 调度架构：tick 主循环（60s）、run_job 执行（独立 AIAgent，platform="cron"）、deliver 投递。**核心结论：Cron 不过 hawk-bridge，不进 LanceDB**。 |
 
 ---

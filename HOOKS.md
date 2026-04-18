@@ -279,8 +279,8 @@ def register(ctx):
 
 ### 3.2 完整事件列表
 
-|| Hook | 触发时机 | 可否注入上下文 | 源码位置 |
-||------|---------|-------------|---------|
+| Hook | 触发时机 | 可否注入上下文 | 源码位置 |
+|------|---------|-------------|---------|
 | `pre_tool_call` | 每个工具执行前 | ❌ | `model_tools.py` handle_function_call() |
 | `post_tool_call` | 每个工具返回后 | ❌ | `model_tools.py` handle_function_call() |
 | `pre_llm_call` | 每轮工具循环开始前 | ✅ **唯一可注入** | `run_agent.py` run_conversation() |
@@ -469,7 +469,7 @@ def my_callback(session_id: str, completed: bool, interrupted: bool,
 
 ## 四、两套 Hook 系统对比
 
-|| Gateway Hooks | Plugin Hooks |
+| 对比维度 | Gateway Hooks | Plugin Hooks |
 |--|--|--|
 | **注册方式** | `~/.hermes/hooks/<name>/HOOK.yaml` + `handler.py` | `ctx.register_hook()` in plugin |
 | **运行范围** | Gateway only | **CLI + Gateway** |

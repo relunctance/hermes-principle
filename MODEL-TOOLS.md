@@ -151,6 +151,40 @@ post_tool_call hook ← 插件钩子（可选）
 返回 JSON 字符串
 ```
 
+### 插件钩子（pre_tool_call / post_tool_call）
+
+```python
+# handle_function_call() 内部
+invoke_hook(
+    "pre_tool_call",
+    tool_name=function_name,
+    args=function_args,
+    task_id=task_id or "",
+    session_id=session_id or "",
+    tool_call_id=tool_call_id or "",
+)
+
+result = registry.dispatch(...)
+
+invoke_hook(
+    "post_tool_call",
+    tool_name=function_name,
+    args=function_args,
+    result=result,
+    task_id=task_id or "",
+    session_id=session_id or "",
+    tool_call_id=tool_call_id or "",
+)
+```
+
+**用途**：插件可以在工具执行前/后注入逻辑，例如：
+- **审计日志**：记录所有工具调用
+- **性能监控**：计时工具执行耗时
+- **结果过滤**：修改或屏蔽工具返回结果
+- **限流**：对高频工具调用进行限制
+
+注意：`pre_tool_call` 和 `post_tool_call` 是 `invoke_hook` 触发，区别于 Hook 事件系统（`agent:start/end`）。
+
 ### Agent Loop 拦截
 
 这些工具不在 model_tools 分发，由 AIAgent 直接处理：

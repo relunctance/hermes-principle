@@ -292,6 +292,123 @@ terminal("pytest tests/test_feature.py::test_name -v")
 terminal("pytest tests/ -q")
 ```
 
+### Go 测试
+
+```bash
+# RED — 验证失败（编译失败说明接口未实现）
+go test ./pkg/hooks/... -v -run TestHookRegister
+
+# GREEN — 验证通过
+go test ./pkg/hooks/... -v -run TestHookRegister
+
+# 完整套件
+go test ./... -v -count=1
+
+# 带覆盖率
+go test ./... -cover -count=1
+
+# 编译检查（不运行测试）
+go build ./cmd/hawk-memory
+```
+
+### Go hawk-memory 集成测试策略
+
+hawk-memory 是长期运行的服务，CGO 依赖无法在测试中启动。使用 HTTP 集成测试：
+
+```go
+// pkg/hooks/hooks_integration_test.go
+package hooks
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+const baseURL = "http://localhost:18368"
+
+func TestHookRegister(t *testing.T) {
+	// 确保服务运行
+	resp, err := http.Get(baseURL + "/health")
+	if err != nil || resp.StatusCode != 200 {
+		t.Skip("hawk-memory not running")
+	}
+
+	req := HookRegisterRequest{
+		Name:        "test-tdd-hook",
+		Description: "TDD验证",
+		Platforms:   []string{"openclaw"},
+		Tags:        []string{"test", "tdd"},
+	}
+	body, _ := json.Marshal(req)
+
+	httpResp, err := http.Post(baseURL+"/v1/hooks/register", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", httpResp.StatusCode)
+	}
+
+	var result HookRegisterResponse
+	json.NewDecoder(httpResp.Body).Decode(&result)
+	if result.ID == "" {
+		t.Error("expected non-empty hook ID")
+	}
+}
+```
+
+### TDD + hawk-memory 开发流程
+
+```
+1. 写测试（RED）
+   → go test → 编译失败或 404（功能未实现）
+
+2. 实现功能（GREEN）
+   → go test → 通过
+
+3. 编译 + 重启服务
+   → go build ./cmd/hawk-memory
+   → systemctl --user restart hawk-memory
+
+4. 端到端验证
+   → curl http://localhost:18368/v1/hooks/list
+
+5. eval 验证 recall 质量（如涉及 recall）
+   → cd ~/repos/hawk-eval && make benchmark-hawk
+
+6. git commit -m "feat: 描述"
+```
+
+详见 `hawk-memory-dev` skill。
+
+### 结合 delegate_task
+
+派发子 Agent 实现时，在 goal 里强制 TDD：
+
+```python
+delegate_task(
+    goal="用严格 TDD 实现 [功能]",
+    context="""
+    遵循 test-driven-development 技能：
+    1. 先写失败的测试（RED）
+    2. 运行测试验证它失败
+    3. 写最简代码通过测试（GREEN）
+    4. 运行测试验证它通过
+    5. 如需要则重构
+    6. 提交并推送
+
+    Go 项目测试命令：go test ./... -v -count=1
+    项目路径：~/repos/hawk-memory/
+    """,
+    toolsets=['terminal', 'file']
+)
+```
+
 ### 结合 delegate_task
 
 派发子 Agent 实现时，在 goal 里强制 TDD：

@@ -151,6 +151,41 @@ hermes skills check               # 检查更新
   └── skill_manage 创建或 skill_view 加载
 ```
 
+### external_dirs（跨 profile 共享 skills）
+
+`skills.external_dirs` 是 config.yaml 中的关键配置，**默认是空数组**。
+
+**单 profile 场景**（`~/.hermes/config.yaml` 或 `~/.hermes/profiles/<profile>/config.yaml`）：
+```yaml
+skills:
+  external_dirs:
+    - /home/gql/.hermes/skills    # 共享 maomao 创建的全局 skills
+```
+
+**效果**：
+- 指定的目录会被**只读**扫描并加载到 skill 索引
+- 该 profile 下的 agent 可以自动发现并触发这些 skills
+- 但不能在该 profile 里修改它们（只读）
+
+**典型用途**：
+- maomao（admin）在 `~/.hermes/skills/hawk/` 维护全局治理类 skills
+- wukong（developer）通过 `external_dirs` 共享使用这些 skills，而不必自己维护副本
+
+**已知限制**：
+- external_dirs 中的 skills 是**只读**的
+- Hermes Agent 启动时扫描 skills/ 生成 `.bundled_manifest` 缓存，运行时新增/移动/删除 skill 需要**重启 Agent** 才能被感知
+- 如果多个 profiles 同时修改同一个 external_dir，可能产生冲突
+
+### 验证方法
+
+```bash
+# 在对应 profile 的 agent 会话中运行
+hermes skills list | grep <skill-name>
+
+# 如果没有输出，说明该 agent 实例的缓存中不存在此 skill
+# 解决方案：重启该 profile 的 agent 会话
+```
+
 ## Skill 发现与缓存机制（重要）
 
 ### 发现时机

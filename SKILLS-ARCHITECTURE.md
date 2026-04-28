@@ -151,6 +151,51 @@ hermes skills check               # 检查更新
   └── skill_manage 创建或 skill_view 加载
 ```
 
+## Skill 发现与缓存机制（重要）
+
+### 发现时机
+
+Hermes Agent 实例**启动时**扫描 `~/.hermes/skills/` 目录，生成 `.bundled_manifest` 缓存文件。之后对该目录的改动（新增/移动/删除 skill）**不会自动被已运行的 Agent 实例感知**。
+
+### 典型问题
+
+| 场景 | 结果 |
+|------|------|
+| A agent 移动了 skill到新目录 | B agent（启动于移动之前）搜不到 |
+| A agent 新建了 skill | B agent（启动于创建之前）搜不到 |
+| Agent 长时间运行中新建 skill | 需要重启才能搜到 |
+
+### 验证方法
+
+```bash
+# 在对应 agent 会话中运行
+hermes skills list | grep <skill-name>
+
+# 如果没有输出，说明该 agent 实例的缓存中不存在此 skill
+```
+
+### 解决方案
+
+| 方法 | 适用场景 | 说明 |
+|------|---------|------|
+| **重启 Agent 会话** | 临时验证/紧急使用 | 最快，立刻生效 |
+| **告知用户等待下次启动** | 用户不急 | 自然过渡 |
+| **更新本文档** | 知识沉淀 | 让其他 agent 知道原理 |
+
+### 为什么不是 bug
+
+这是**有意为之的设计**：
+- 每个 Agent 实例有独立的 session 生命周期
+- 避免运行时文件系统变化导致不一致
+- 符合微服务「实例隔离」原则
+
+### 对多 Agent 协作的影响
+
+当多个 agent 协作时（如 wukong 找不到 maomao 创建的 skill）：
+- **不是 skill 不存在**，而是**该 agent 实例未在创建后重启**
+- 解决方案：重启对应 agent 或让其感知到 skill 已被迁移
+- 预防：迁移 skill 后在共享频道告知所有相关 agent
+
 ## 触发 skill 的方式
 
 1. **自动加载**：Hermes 根据讨论内容自动匹配相关 skill
